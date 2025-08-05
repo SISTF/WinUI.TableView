@@ -938,7 +938,7 @@ public partial class TableView : ListView
                || (LastSelectionUnit is TableViewSelectionUnit.Row && slot.IsValidRow(this) && !slot.IsValidColumn(this))
                || (SelectionUnit is TableViewSelectionUnit.CellOrRow && slot.IsValidRow(this) && !slot.IsValidColumn(this)))
             {
-                SelectRows(slot, shiftKey);
+                SelectRows(slot, shiftKey, ctrlKey);
                 LastSelectionUnit = TableViewSelectionUnit.Row;
             }
             else
@@ -956,24 +956,34 @@ public partial class TableView : ListView
 
     /// <summary>
     /// Selects rows based on the specified cell slot.
+    /// Range selection uses starting row state, no toggle
     /// </summary>
-    private void SelectRows(TableViewCellSlot slot, bool shiftKey)
+    private void SelectRows(TableViewCellSlot slot, bool shiftKey, bool ctrlKey = false)
     {
         var selectionRange = SelectedRanges.FirstOrDefault(x => x.IsInRange(slot.Row));
         SelectionStartRowIndex ??= slot.Row;
         CurrentRowIndex = slot.Row;
 
-        if (selectionRange is not null)
-        {
-            DeselectRange(selectionRange);
-        }
-
         if (shiftKey && SelectionMode is ListViewSelectionMode.Multiple or ListViewSelectionMode.Extended)
         {
+            // RANGE SELECTION: Use starting row state to determine action for entire range
             var min = Math.Min(SelectionStartRowIndex.Value, slot.Row);
             var max = Math.Max(SelectionStartRowIndex.Value, slot.Row);
+            var range = new ItemIndexRange(min, (uint)(max - min) + 1);
 
-            SelectRange(new ItemIndexRange(min, (uint)(max - min) + 1));
+            // Check if STARTING row is selected to determine action
+            var startingRowSelected = SelectedRanges.Any(r => r.IsInRange(SelectionStartRowIndex.Value));
+
+            if (startingRowSelected)
+            {
+                // Starting row is selected - SELECT the entire range (propagate selected state)
+                SelectRange(range);
+            }
+            else
+            {
+                // Starting row is not selected - DESELECT the entire range (propagate unselected state)
+                DeselectRange(range);
+            }
         }
         else
         {
@@ -984,7 +994,17 @@ public partial class TableView : ListView
             }
             else
             {
-                SelectRange(new ItemIndexRange(slot.Row, 1));
+                // SINGLE CLICK: Toggle behavior
+                if (selectionRange is not null)
+                {
+                    // Row is selected - deselect it
+                    DeselectRange(new ItemIndexRange(slot.Row, 1));
+                }
+                else
+                {
+                    // Row is not selected - select it
+                    SelectRange(new ItemIndexRange(slot.Row, 1));
+                }
             }
         }
 
